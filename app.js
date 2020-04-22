@@ -5,14 +5,14 @@ const mongodb = require('mongodb')
 const dotenv = require('dotenv')
 dotenv.config()
 
-async function dataScraper(browser, url) {
+async function dataScraper(browser, url, indicator) {
 
     let page = await browser.newPage()
     await page.goto(url)
 
     let pageBody = await page.evaluate( () => document.body.innerHTML)
 
-    let values = pageBody.split("Highcharts.chart('graph-youtube-monthly-vidviews-container', ")[1].split("data: ")[1].split(" }],")[0].slice(2).slice(0, -2).split("],[")
+    let values = pageBody.split("Highcharts.chart('graph-youtube-monthly-" + indicator + "-container', ")[1].split("data: ")[1].split(" }],")[0].slice(2).slice(0, -2).split("],[")
     let refactoredValues = values.map( value => {
         let valuesForMonth = value.split(",")
         return [new Date(Number(valuesForMonth[0])), Number(valuesForMonth[1])]
@@ -31,7 +31,7 @@ async function dataScraper(browser, url) {
 
 }
 
-async function channelAddressScraper(url) {
+async function channelAddressScraper(url, indicator) {
 
     let browser = await puppeteer.launch({headless: false})
     let page = await browser.newPage()
@@ -47,10 +47,10 @@ async function channelAddressScraper(url) {
 
     let linksPointer = 10
     let sbChannelStats = []
-    while(sbChannelPageLinks.length >= linksPointer) {
-    //while(10 >= linksPointer) {
+    //while(sbChannelPageLinks.length >= linksPointer) {
+    while(10 >= linksPointer) {
 
-        let sbChannelPagePromises = sbChannelPageLinks.slice(linksPointer-10, linksPointer).map( channelLink => dataScraper(browser, channelLink))
+        let sbChannelPagePromises = sbChannelPageLinks.slice(linksPointer-10, linksPointer).map( channelLink => dataScraper(browser, channelLink, indicator))
 
         sbChannelStats = sbChannelStats.concat(await Promise.all(sbChannelPagePromises))
 
@@ -62,17 +62,6 @@ async function channelAddressScraper(url) {
 
     return sbChannelStats
 }
-
-
-
-
-
-
-
-
-
-
-
 
 function channelDataRequest(channelId, byId) {
     return new Promise((resolve, reject) => {
@@ -200,13 +189,12 @@ function channelDataRequest(channelId, byId) {
     })
     
     framesForChannelsCalculated = await Promise.all(framesForChannelsCalculated)
-    //return framesForChannelsCalculated.filter( f => f && !f.Remove )
-    return framesForChannelsCalculated
+    return framesForChannelsCalculated.filter( f => f && !f.Remove )
   }
 
-async function channelDataFramesProcessing(MongoClient) {
+async function channelDataFramesProcessing(MongoClient, indicator) {
 
-    let channelsFromSocialblade = await MongoClient.db().collection('statsForChannels').find().toArray()
+    let channelsFromSocialblade = await MongoClient.db().collection(indicator + 'StatsForChannels').find().toArray()
 
     let minDate = new Date("2030-01-01T00:00:00.000Z")
     let maxDate = new Date("2000-01-01T00:00:00.000Z")
@@ -217,36 +205,39 @@ async function channelDataFramesProcessing(MongoClient) {
 
     return await channelIncreaseProcessor({
       channelsFromSocialblade, 
-        indicator: "viewCount",
+        indicator,
         dataFramesFrom: minDate, 
         dataFramesTo: maxDate, 
         modify: []
     })
 }
 
-
-// channelAddressScraper("https://socialblade.com/youtube/top/country/hu/mostviewed").then( statsFromSB => {
-//   mongodb.connect(process.env.CONNECTIONSTRING, {useNewUrlParser: true, useUnifiedTopology: true}, async function(err, client) {
-//     let insertResult = await client.db().collection('statsForChannels').insertMany(statsFromSB)
-//     console.log(insertResult.insertedCount, "channel stats added.")  
-//     client.close()
-//   })
-// })
-
-
-
-mongodb.connect(process.env.CONNECTIONSTRING, {useNewUrlParser: true, useUnifiedTopology: true}, function(err, client) {
-  
-  channelDataFramesProcessing(client)
-  .then( res => {
-
-    console.log(res.length, " channels processed.")
-    let fileName = "increaseChannel.json"
-    fs.writeFile("framesProcessed/" + fileName, JSON.stringify(res), err => {
-      if(err) throw err
-      console.log(fileName + ", Saved!")
-    }) 
-
+// Scraping based on: subscribers, vidviews
+// Collection names: subscriberCountStatsForChannels, viewCountStatsForChannels
+// https://socialblade.com/youtube/top/country/hu/mostsubscribed
+// https://socialblade.com/youtube/top/country/hu/mostviewed
+channelAddressScraper("https://socialblade.com/youtube/top/country/hu/mostsubscribed", "subscribers").then( statsFromSB => {
+  mongodb.connect(process.env.CONNECTIONSTRING, {useNewUrlParser: true, useUnifiedTopology: true}, async function(err, client) {
+    let insertResult = await client.db().collection('subscriberStatsForChannels').insertMany(statsFromSB)
+    console.log(insertResult.insertedCount, "channel stats added.")  
     client.close()
-  }) 
+  })
 })
+
+
+// Processing based on: viewCount, subscriberCount  
+// let processingIndicator = "subscriberCount"
+// mongodb.connect(process.env.CONNECTIONSTRING, {useNewUrlParser: true, useUnifiedTopology: true}, function(err, client) {
+//   channelDataFramesProcessing(client, processingIndicator)
+//   .then( res => {
+
+//     console.log(res.length, " channels processed.")
+//     let fileName = processingIndicator + "IncreaseChannel.json"
+//     fs.writeFile("framesProcessed/" + fileName, JSON.stringify(res), err => {
+//       if(err) throw err
+//       console.log(fileName + ", Saved!")
+//     }) 
+
+//     client.close()
+//   }) 
+// })

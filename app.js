@@ -8,6 +8,13 @@ dotenv.config()
 async function dataScraper(browser, url, indicator) {
 
     let page = await browser.newPage()
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+      if (request.resourceType() === 'script' || request.resourceType() === 'image')
+        request.abort();
+      else
+        request.continue();
+    });
     await page.goto(url)
 
     let pageBody = await page.evaluate( () => document.body.innerHTML)
@@ -35,6 +42,13 @@ async function channelAddressScraper(url, indicator) {
 
     let browser = await puppeteer.launch({headless: false})
     let page = await browser.newPage()
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+      if (request.resourceType() === 'script' || request.resourceType() === 'image')
+        request.abort();
+      else
+        request.continue();
+      });
     await page.goto(url)
 
     let sbChannelPageLinks = await page.evaluate( () => {

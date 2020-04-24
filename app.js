@@ -232,7 +232,7 @@ async function channelDataFramesProcessing(MongoClient, indicator) {
 // https://socialblade.com/youtube/top/country/hu/mostviewed
 channelAddressScraper("https://socialblade.com/youtube/top/country/hu/mostsubscribed", "subscribers").then( statsFromSB => {
   mongodb.connect(process.env.CONNECTIONSTRING, {useNewUrlParser: true, useUnifiedTopology: true}, async function(err, client) {
-    let insertResult = await client.db().collection('subscriberStatsForChannels').insertMany(statsFromSB)
+    let insertResult = await client.db().collection('subscriberCountStatsForChannels').insertMany(statsFromSB)
     console.log(insertResult.insertedCount, "channel stats added.")  
     client.close()
   })

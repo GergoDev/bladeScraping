@@ -61,10 +61,10 @@ async function channelAddressScraper(url, indicator) {
 
     let linksPointer = 10
     let sbChannelStats = []
-    //while(sbChannelPageLinks.length >= linksPointer) {
-    while(10 >= linksPointer) {
+    while(sbChannelPageLinks.length >= linksPointer) {
+    //while(10 >= linksPointer) {
 
-        let sbChannelPagePromises = sbChannelPageLinks.slice(linksPointer-10, linksPointer).map( channelLink => dataScraper(browser, channelLink, indicator))
+        let sbChannelPagePromises = sbChannelPageLinks.slice(linksPointer-10, linksPointer).map( channelLink => dataScraper(browser, channelLink + "/monthly", indicator))
 
         sbChannelStats = sbChannelStats.concat(await Promise.all(sbChannelPagePromises))
 
@@ -231,11 +231,12 @@ async function channelDataFramesProcessing(MongoClient, indicator) {
 // https://socialblade.com/youtube/top/country/hu/mostsubscribed
 // https://socialblade.com/youtube/top/country/hu/mostviewed
 channelAddressScraper("https://socialblade.com/youtube/top/country/hu/mostsubscribed", "subscribers").then( statsFromSB => {
-  mongodb.connect(process.env.CONNECTIONSTRING, {useNewUrlParser: true, useUnifiedTopology: true}, async function(err, client) {
-    let insertResult = await client.db().collection('subscriberCountStatsForChannels').insertMany(statsFromSB)
-    console.log(insertResult.insertedCount, "channel stats added.")  
-    client.close()
-  })
+  console.log(statsFromSB[0])
+  // mongodb.connect(process.env.CONNECTIONSTRING, {useNewUrlParser: true, useUnifiedTopology: true}, async function(err, client) {
+  //   let insertResult = await client.db().collection('subscriberCountStatsForChannels').insertMany(statsFromSB)
+  //   console.log(insertResult.insertedCount, "channel stats added.")  
+  //   client.close()
+  // })
 })
 
 

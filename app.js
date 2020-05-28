@@ -18,7 +18,12 @@ async function dataScraper(browser, url, indicator) {
     await page.goto(url)
 
     let pageBody = await page.evaluate( () => document.body.innerHTML)
-
+    if(url.indexOf("UCipg-1LCecIfx8RfWnafG4Q") != -1) {
+      fs.writeFile("pageContent_legjobbMagyar.txt", pageBody, () => console.log("write done"))
+    }
+    if(url.indexOf("UCM3UR3fhPakeKa2LDwfao7w") != -1) {
+      fs.writeFile("pageContent_mokso.txt", pageBody, () => console.log("write done"))
+    }
     let values = pageBody.split("Highcharts.chart('graph-youtube-monthly-" + indicator + "-container', ")[1].split("data: ")[1].split(" }],")[0].slice(2).slice(0, -2).split("],[")
     let refactoredValues = values.map( value => {
         let valuesForMonth = value.split(",")
@@ -110,6 +115,8 @@ function channelDataRequest(channelId, byId) {
 
     let { channelsFromSocialblade, indicator, dataFramesFrom, dataFramesTo, modify } = props  
     
+    let n = n => n > 9 ? "" + n : "0" + n
+
     function tillMonthMillisecs(date) {
       let date2 = new Date(date)
       date2.setDate(1)
@@ -148,42 +155,33 @@ function channelDataRequest(channelId, byId) {
         }
 
         let framesProcessed = {}
-        let actualFrameDate = new Date(dataFramesTo)
-        let firstValue = true
+        let actualFrameDate = new Date(dataFramesFrom)
         let lastValue = false
-        let sumValues = 0
         let currentValueCount = channelData.items[0].statistics[indicator]
 
-          while(tillMonthMillisecs(actualFrameDate) >= tillMonthMillisecs(dataFramesFrom) || lastValue) {
+          while(tillMonthMillisecs(actualFrameDate) <= tillMonthMillisecs(dataFramesTo) || lastValue) {
   
             let months = ["január", "február", "március", "április", "május", "június", "július", "augusztus", "szeptember", "október", "november", "december"]
             let frameDateStyled = `${actualFrameDate.getFullYear()} ${months[actualFrameDate.getMonth()]}`
             let channelDataFrame = channel.dataFrames.find( frame => tillMonthMillisecs(frame[0]) == tillMonthMillisecs(actualFrameDate))
                         
             if(channelDataFrame) {
-              if(firstValue) {
-                framesProcessed[frameDateStyled] = currentValueCount
-                firstValue = false
-                sumValues = channelDataFrame[1]
-              } else {
-                framesProcessed[frameDateStyled] = currentValueCount - sumValues
-                sumValues += channelDataFrame[1]
-                if(tillMonthMillisecs(actualFrameDate) == tillMonthMillisecs(dataFramesFrom)) lastValue = true
-              }
+              framesProcessed[frameDateStyled] = channelDataFrame[1]
+              if(tillMonthMillisecs(actualFrameDate) == tillMonthMillisecs(dataFramesTo)) lastValue = true
             } else {
-                if(lastValue) {
-                  framesProcessed[frameDateStyled] = currentValueCount - sumValues
-                  lastValue = false
-                } else {
-                  framesProcessed[frameDateStyled] = ""
-                }
+              if(lastValue) {
+                framesProcessed[`${new Date().getFullYear()} ${months[new Date().getMonth()]} ${n(new Date().getDate())}`] = currentValueCount
+                lastValue = false
+              } else {
+                framesProcessed[frameDateStyled] = ""
+              }
             }
 
-            if(actualFrameDate.getMonth()-1 >= 0) {
-                actualFrameDate.setMonth(actualFrameDate.getMonth()-1)
+            if(actualFrameDate.getMonth()+1 <= 11) {
+                actualFrameDate.setMonth(actualFrameDate.getMonth()+1)
             } else {
-                actualFrameDate.setFullYear(actualFrameDate.getFullYear()-1)
-                actualFrameDate.setMonth(11)
+                actualFrameDate.setFullYear(actualFrameDate.getFullYear()+1)
+                actualFrameDate.setMonth(0)
             }
           }
   
@@ -210,35 +208,33 @@ async function channelDataFramesProcessing(MongoClient, indicator) {
 
     let channelsFromSocialblade = await MongoClient.db().collection(indicator + 'StatsForChannels').find().toArray()
 
-    let minDate = new Date("2030-01-01T00:00:00.000Z")
-    let maxDate = new Date("2000-01-01T00:00:00.000Z")
-    channelsFromSocialblade.forEach( c => {
-        if(c.dataFrames[0][0] > maxDate) maxDate = c.dataFrames[0][0]
-        if(c.dataFrames[c.dataFrames.length-1][0] < minDate) minDate = c.dataFrames[c.dataFrames.length-1][0]
-    })
-
     return await channelIncreaseProcessor({
       channelsFromSocialblade, 
         indicator,
-        dataFramesFrom: minDate, 
-        dataFramesTo: maxDate, 
+        dataFramesFrom: new Date("2017-01-01T00:00:00.000Z"), 
+        dataFramesTo: new Date("2020-06-01T00:00:00.000Z"), 
         modify: []
     })
 }
+
+// async function channelAddressScraper(url, indicator) {
+
+//   let browser = await puppeteer.launch({headless: false})
+
+//   return dataScraper(browser, "https://socialblade.com/youtube/channel/UCipg-1LCecIfx8RfWnafG4Q/monthly", indicator)
+// }
 
 // Scraping based on: subscribers, vidviews
 // Collection names: subscriberCountStatsForChannels, viewCountStatsForChannels
 // https://socialblade.com/youtube/top/country/hu/mostsubscribed
 // https://socialblade.com/youtube/top/country/hu/mostviewed
 channelAddressScraper("https://socialblade.com/youtube/top/country/hu/mostsubscribed", "subscribers").then( statsFromSB => {
-  console.log(statsFromSB[0])
-  // mongodb.connect(process.env.CONNECTIONSTRING, {useNewUrlParser: true, useUnifiedTopology: true}, async function(err, client) {
-  //   let insertResult = await client.db().collection('subscriberCountStatsForChannels').insertMany(statsFromSB)
-  //   console.log(insertResult.insertedCount, "channel stats added.")  
-  //   client.close()
-  // })
+  mongodb.connect(process.env.CONNECTIONSTRING, {useNewUrlParser: true, useUnifiedTopology: true}, async function(err, client) {
+    let insertResult = await client.db().collection('subscriberCountStatsForChannels').insertMany(statsFromSB)
+    console.log(insertResult.insertedCount, "channel stats added.")  
+    client.close()
+  })
 })
-
 
 // Processing based on: viewCount, subscriberCount  
 // let processingIndicator = "subscriberCount"

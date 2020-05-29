@@ -17,13 +17,12 @@ async function dataScraper(browser, url, indicator) {
     });
     await page.goto(url)
 
+    let [detailedStatisticsLink] = await page.$x('//*[@id="YouTubeUserMenu"]/a[3]')
+    await detailedStatisticsLink.click()
+    await page.waitForNavigation()
+
     let pageBody = await page.evaluate( () => document.body.innerHTML)
-    if(url.indexOf("UCipg-1LCecIfx8RfWnafG4Q") != -1) {
-      fs.writeFile("pageContent_legjobbMagyar.txt", pageBody, () => console.log("write done"))
-    }
-    if(url.indexOf("UCM3UR3fhPakeKa2LDwfao7w") != -1) {
-      fs.writeFile("pageContent_mokso.txt", pageBody, () => console.log("write done"))
-    }
+
     let values = pageBody.split("Highcharts.chart('graph-youtube-monthly-" + indicator + "-container', ")[1].split("data: ")[1].split(" }],")[0].slice(2).slice(0, -2).split("],[")
     let refactoredValues = values.map( value => {
         let valuesForMonth = value.split(",")
@@ -69,7 +68,7 @@ async function channelAddressScraper(url, indicator) {
     while(sbChannelPageLinks.length >= linksPointer) {
     //while(10 >= linksPointer) {
 
-        let sbChannelPagePromises = sbChannelPageLinks.slice(linksPointer-10, linksPointer).map( channelLink => dataScraper(browser, channelLink + "/monthly", indicator))
+        let sbChannelPagePromises = sbChannelPageLinks.slice(linksPointer-10, linksPointer).map( channelLink => dataScraper(browser, channelLink, indicator))
 
         sbChannelStats = sbChannelStats.concat(await Promise.all(sbChannelPagePromises))
 
@@ -156,22 +155,19 @@ function channelDataRequest(channelId, byId) {
 
         let framesProcessed = {}
         let actualFrameDate = new Date(dataFramesFrom)
-        let lastValue = false
         let currentValueCount = channelData.items[0].statistics[indicator]
 
-          while(tillMonthMillisecs(actualFrameDate) <= tillMonthMillisecs(dataFramesTo) || lastValue) {
+          while(tillMonthMillisecs(actualFrameDate) <= tillMonthMillisecs(dataFramesTo)) {
   
             let months = ["január", "február", "március", "április", "május", "június", "július", "augusztus", "szeptember", "október", "november", "december"]
             let frameDateStyled = `${actualFrameDate.getFullYear()} ${months[actualFrameDate.getMonth()]}`
             let channelDataFrame = channel.dataFrames.find( frame => tillMonthMillisecs(frame[0]) == tillMonthMillisecs(actualFrameDate))
-                        
+
             if(channelDataFrame) {
               framesProcessed[frameDateStyled] = channelDataFrame[1]
-              if(tillMonthMillisecs(actualFrameDate) == tillMonthMillisecs(dataFramesTo)) lastValue = true
             } else {
-              if(lastValue) {
+              if(tillMonthMillisecs(actualFrameDate) == tillMonthMillisecs(dataFramesTo)) {
                 framesProcessed[`${new Date().getFullYear()} ${months[new Date().getMonth()]} ${n(new Date().getDate())}`] = currentValueCount
-                lastValue = false
               } else {
                 framesProcessed[frameDateStyled] = ""
               }
@@ -212,43 +208,36 @@ async function channelDataFramesProcessing(MongoClient, indicator) {
       channelsFromSocialblade, 
         indicator,
         dataFramesFrom: new Date("2017-01-01T00:00:00.000Z"), 
-        dataFramesTo: new Date("2020-06-01T00:00:00.000Z"), 
+        dataFramesTo: new Date("2020-05-01T00:00:00.000Z"), 
         modify: []
     })
 }
-
-// async function channelAddressScraper(url, indicator) {
-
-//   let browser = await puppeteer.launch({headless: false})
-
-//   return dataScraper(browser, "https://socialblade.com/youtube/channel/UCipg-1LCecIfx8RfWnafG4Q/monthly", indicator)
-// }
 
 // Scraping based on: subscribers, vidviews
 // Collection names: subscriberCountStatsForChannels, viewCountStatsForChannels
 // https://socialblade.com/youtube/top/country/hu/mostsubscribed
 // https://socialblade.com/youtube/top/country/hu/mostviewed
-channelAddressScraper("https://socialblade.com/youtube/top/country/hu/mostsubscribed", "subscribers").then( statsFromSB => {
-  mongodb.connect(process.env.CONNECTIONSTRING, {useNewUrlParser: true, useUnifiedTopology: true}, async function(err, client) {
-    let insertResult = await client.db().collection('subscriberCountStatsForChannels').insertMany(statsFromSB)
-    console.log(insertResult.insertedCount, "channel stats added.")  
-    client.close()
-  })
-})
+// channelAddressScraper("https://socialblade.com/youtube/top/country/hu/mostsubscribed", "subscribers").then( statsFromSB => {
+//   mongodb.connect(process.env.CONNECTIONSTRING, {useNewUrlParser: true, useUnifiedTopology: true}, async function(err, client) {
+//     let insertResult = await client.db().collection('subscriberCountStatsForChannels').insertMany(statsFromSB)
+//     console.log(insertResult.insertedCount, "channel stats added.")  
+//     client.close()
+//   })
+// })
 
 // Processing based on: viewCount, subscriberCount  
-// let processingIndicator = "subscriberCount"
-// mongodb.connect(process.env.CONNECTIONSTRING, {useNewUrlParser: true, useUnifiedTopology: true}, function(err, client) {
-//   channelDataFramesProcessing(client, processingIndicator)
-//   .then( res => {
+let processingIndicator = "subscriberCount"
+mongodb.connect(process.env.CONNECTIONSTRING, {useNewUrlParser: true, useUnifiedTopology: true}, function(err, client) {
+  channelDataFramesProcessing(client, processingIndicator)
+  .then( res => {
 
-//     console.log(res.length, " channels processed.")
-//     let fileName = processingIndicator + "IncreaseChannel.json"
-//     fs.writeFile("framesProcessed/" + fileName, JSON.stringify(res), err => {
-//       if(err) throw err
-//       console.log(fileName + ", Saved!")
-//     }) 
+    console.log(res.length, " channels processed.")
+    let fileName = processingIndicator + "IncreaseChannel.json"
+    fs.writeFile("framesProcessed/" + fileName, JSON.stringify(res), err => {
+      if(err) throw err
+      console.log(fileName + ", Saved!")
+    }) 
 
-//     client.close()
-//   }) 
-// })
+    client.close()
+  }) 
+})
